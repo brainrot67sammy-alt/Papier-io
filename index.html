@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="pl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Territorial IO</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box}
+html,body{width:100%;height:100%;overflow:hidden;background:#0d0d1a;font-family:'Segoe UI',system-ui,sans-serif;touch-action:none;user-select:none;-webkit-user-select:none}
+canvas{display:block;position:absolute;inset:0;width:100%;height:100%;z-index:1}
+#ui{position:absolute;inset:0;pointer-events:none;z-index:10}
+#percent{position:absolute;top:14px;left:50%;transform:translateX(-50%);color:#fff;font-size:26px;font-weight:800;text-shadow:0 2px 12px rgba(0,0,0,.7)}
+#rank{position:absolute;top:14px;right:14px;background:rgba(0,0,0,.6);border-radius:12px;padding:12px 16px;min-width:180px;color:#fff;font-size:13px;line-height:1.6;backdrop-filter:blur(8px);border:1px solid rgba(255,255,255,.08)}
+#rank .title{font-weight:700;font-size:12px;margin-bottom:8px;opacity:.7;letter-spacing:1px;text-transform:uppercase}
+#rank .row{display:flex;justify-content:space-between;gap:10px;align-items:center}
+#rank .row.me{color:#ffe566;font-weight:700}
+#rank .dot{width:10px;height:10px;border-radius:2px;display:inline-block;margin-right:6px;box-shadow:0 0 6px currentColor}
+#rank .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:100px}
+#playersOnline{position:absolute;top:14px;left:14px;background:rgba(0,0,0,.55);border-radius:10px;padding:8px 14px;color:#70a1ff;font-size:13px;font-weight:600;border:1px solid rgba(255,255,255,.08)}
+#controlsHint{position:absolute;bottom:16px;left:50%;transform:translateX(-50%);color:rgba(255,255,255,.35);font-size:12px;text-align:center}
+
+#overlay{
+  position:absolute;inset:0;z-index:30;
+  background:radial-gradient(ellipse at center,rgba(20,20,45,.96) 0%,rgba(8,8,20,.98) 100%);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  overflow-y:auto;padding:20px;
+}
+#overlay.hidden{display:none !important}
+#overlay h1{color:#fff;font-size:clamp(28px,7vw,48px);margin-bottom:6px;letter-spacing:3px;text-shadow:0 0 40px rgba(108,92,231,.5)}
+#overlay .subtitle{color:#888;font-size:14px;margin-bottom:22px;text-align:center;max-width:360px;line-height:1.5}
+
+.panel{background:rgba(255,255,255,.05);border:1px solid rgba(255,255,255,.1);border-radius:16px;padding:22px 24px;width:min(380px,94vw)}
+.panel label{display:block;color:#bbb;font-size:11px;font-weight:600;letter-spacing:1px;text-transform:uppercase;margin-bottom:6px}
+.panel input[type=text]{background:rgba(0,0,0,.45);border:1px solid rgba(255,255,255,.15);border-radius:10px;padding:12px 14px;color:#fff;font-size:15px;outline:none;width:100%;margin-bottom:14px}
+.panel input[type=text]:focus{border-color:#6c5ce7}
+
+.color-grid{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:14px}
+.color-opt{width:100%;aspect-ratio:1;border-radius:8px;border:3px solid transparent;cursor:pointer;box-shadow:0 3px 10px rgba(0,0,0,.35)}
+.color-opt.selected{border-color:#fff;transform:scale(1.1);box-shadow:0 0 14px rgba(255,255,255,.45)}
+
+.mode-row{display:flex;gap:8px;margin-bottom:14px}
+.mode-btn{flex:1;padding:11px 6px;border-radius:10px;border:2px solid rgba(255,255,255,.12);background:rgba(0,0,0,.35);color:#ccc;font-size:13px;font-weight:600;cursor:pointer}
+.mode-btn.active{border-color:#6c5ce7;background:rgba(108,92,231,.3);color:#fff}
+
+.btn{
+  display:block;width:100%;padding:14px 0;margin-top:6px;border:none;border-radius:12px;
+  font-size:16px;font-weight:700;letter-spacing:1px;cursor:pointer;
+  background:linear-gradient(135deg,#6c5ce7,#a29bfe);color:#fff;
+  box-shadow:0 6px 22px rgba(108,92,231,.4);
+}
+.btn:active{transform:scale(.98)}
+.btn:disabled{opacity:.55;cursor:wait}
+.btn-ghost{background:rgba(255,255,255,.08);color:#ccc;box-shadow:none;margin-top:10px}
+.btn-ghost:hover{background:rgba(255,255,255,.14);color:#fff}
+
+#roomField{display:none;margin-bottom:4px}
+#status{color:#aaa;font-size:13px;text-align:center;min-height:18px;margin:8px 0 4px}
+#status.err{color:#ff6b6b}
+#status.ok{color:#2ed573}
+
+/* Lobby */
+#lobby{display:none;width:min(380px,94vw)}
+#lobby.show{display:block}
+#menu.show{display:block}
+#menu.hide{display:none}
+
+.code-frame{
+  background:linear-gradient(145deg,rgba(108,92,231,.22),rgba(162,155,254,.08));
+  border:2px solid rgba(162,155,254,.55);border-radius:16px;padding:20px 16px;text-align:center;
+  box-shadow:0 0 28px rgba(108,92,231,.25);margin-bottom:14px;
+}
+.code-frame .lbl{color:#a29bfe;font-size:11px;font-weight:700;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px}
+.code-frame .code{color:#fff;font-size:34px;font-weight:800;letter-spacing:7px;cursor:pointer;user-select:all}
+.code-frame .hint{color:#888;font-size:12px;margin-top:10px}
+
+.lobby-list{background:rgba(0,0,0,.35);border-radius:12px;padding:12px 14px;margin-bottom:12px;min-height:50px}
+.lobby-list .t{color:#888;font-size:11px;font-weight:700;letter-spacing:1px;text-transform:uppercase;margin-bottom:8px}
+.lobby-list .row{display:flex;align-items:center;gap:10px;color:#fff;font-size:14px;font-weight:600;margin:5px 0}
+.lobby-list .dot{width:12px;height:12px;border-radius:3px;flex-shrink:0}
+.lobby-list .me{color:#ffe566}
+#waitMsg{display:none;text-align:center;color:#aaa;font-size:14px;margin:8px 0}
+#waitMsg.show{display:block}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <div id="playersOnline">● Solo</div>
+  <div id="percent">0.0%</div>
+  <div id="rank"><div class="title">Ranking</div><div id="rankList"></div></div>
+  <div id="controlsHint">WASD / Strzałki / Dotyk • Zamykaj pętle • Przecinaj linie</div>
+</div>
+
+<div id="overlay">
+  <h1>TERRITORIAL IO</h1>
+  <p class="subtitle">Zamykaj pętle śladem, zdobywaj terytorium.<br>Przecinaj linię przeciwnika = eliminacja.</p>
+
+  <div class="panel" id="menu">
+    <label>Twoje imię</label>
+    <input type="text" id="nameInput" maxlength="14" value="Gracz" autocomplete="off" spellcheck="false">
+
+    <label>Kolor kostki</label>
+    <div class="color-grid" id="colorGrid"></div>
+
+    <label>Tryb gry</label>
+    <div class="mode-row">
+      <button type="button" class="mode-btn active" id="btnSolo">Solo + Boty</button>
+      <button type="button" class="mode-btn" id="btnHost">Stwórz pokój</button>
+      <button type="button" class="mode-btn" id="btnJoin">Dołącz</button>
+    </div>
+
+    <div id="roomField">
+      <label>Kod pokoju</label>
+      <input type="text" id="roomInput" placeholder="np. AB12XY" autocomplete="off" spellcheck="false" style="text-align:center;font-weight:700">
+    </div>
+
+    <div id="status"></div>
+
+    <button type="button" class="btn" id="btnStart">START</button>
+    <button type="button" class="btn" id="btnCreate" style="display:none">UTWÓRZ POKÓJ</button>
+    <button type="button" class="btn" id="btnDoJoin" style="display:none">DOŁĄCZ DO POKOJU</button>
+  </div>
+
+  <div id="lobby">
+    <div class="code-frame">
+      <div class="lbl">Kod pokoju</div>
+      <div class="code" id="lobbyCode">————</div>
+      <div class="hint">Kliknij kod, aby skopiować • Wyślij znajomym</div>
+    </div>
+    <div class="lobby-list">
+      <div class="t">Gracze w pokoju</div>
+      <div id="lobbyPlayers"></div>
+    </div>
+    <div id="waitMsg">Oczekiwanie na start gry przez hosta…</div>
+    <div id="statusL" style="color:#aaa;font-size:13px;text-align:center;min-height:18px;margin-bottom:8px"></div>
+    <button type="button" class="btn" id="btnBegin" style="display:none">START GRY</button>
+    <button type="button" class="btn btn-ghost" id="btnBack">Wróć do menu</button>
+  </div>
+</div>
+
+<script>
+(function () {
+  'use strict';
+
+  // ========== CONFIG ==========
+  var MAP = 2000, CELL = 4, GRID = MAP / CELL;
+  var SPEED = 2.85, CUBE = 16, START_SZ = 30, TRAIL_STEP = 3, BOTS = 7, MAX_TRAIL = 1400;
+  var COLORS = ['#ff4757','#2ed573','#1e90ff','#ffa502','#a55eea','#ff6b81','#7bed9f','#70a1ff','#eccc68','#ff6348','#5352ed','#26de81','#fd79a8','#00cec9','#e17055','#6c5ce7'];
+
+  // ========== DOM ==========
+  var canvas = document.getElementById('c');
+  var ctx = canvas.getContext('2d', { alpha: false });
+  var overlay = document.getElementById('overlay');
+  var menuEl = document.getElementById('menu');
+  var lobbyEl = document.getElementById('lobby');
+  var statusEl = document.getElementById('status');
+  var statusL = document.getElementById('statusL');
+
+  var W = 0, H = 0, dpr = 1;
+  var camera = { x: MAP / 2, y: MAP / 2 };
+  var players = [];
+  var human = null;
+  var keys = {};
+  var running = false;
+  var lastTime = 0;
+  var selectedColor = COLORS[0];
+  var gameMode = 'solo';
+  var grid = new Uint16Array(GRID * GRID);
+  var nextId = 1;
+
+  // multi
+  var peer = null;
+  var connections = {};
+  var myPeerId = null;
+  var isHost = false;
+  var roomCode = '';
+  var roster = [];
+
+  // ========== UTILS ==========
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  }
+  window.addEventListener('resize', resize);
+  resize();
+
+  function dist(ax, ay, bx, by) { var dx = ax - bx, dy = ay - by; return Math.sqrt(dx * dx + dy * dy); }
+  function dist2(ax, ay, bx, by) { var dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; }
+  function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
+  function rand(a, b) { return a + Math.random() * (b - a); }
+  function darken(hex, f) {
+    var n = parseInt(hex.slice(1), 16);
+    return 'rgb(' + ((((n >> 16) & 255) * f) | 0) + ',' + ((((n >> 8) & 255) * f) | 0) + ',' + (((n & 255) * f) | 0) + ')';
+  }
+  function lighten(hex, f) {
+    var n = parseInt(hex.slice(1), 16);
+    var r = (n >> 16) & 255, g = (n >> 8) & 255, b = n & 255;
+    r = Math.min(255, r + (255 - r) * f) | 0;
+    g = Math.min(255, g + (255 - g) * f) | 0;
+    b = Math.min(255, b + (255 - b) * f) | 0;
+    return 'rgb(' + r + ',' + g + ',' + b + ')';
+  }
+  function gIdx(gx, gy) { return gy * GRID + gx; }
+  function w2g(x, y) { return [(x / CELL) | 0, (y / CELL) | 0]; }
+  function isOwn(p, x, y) {
+    var g = w2g(x, y);
+    if (g[0] < 0 || g[1] < 0 || g[0] >= GRID || g[1] >= GRID) return false;
+    return grid[gIdx(g[0], g[1])] === p.id;
+  }
+  function esc(s) { var d = document.createElement('div'); d.textContent = s; return d.innerHTML; }
+  function setStatus(msg, cls) { statusEl.textContent = msg || ''; statusEl.className = cls || ''; }
+  function getName() {
+    var v = document.getElementById('nameInput').value;
+    return (v || 'Gracz').trim().slice(0, 14);
+  }
+
+  // ========== DRAW CUBE ==========
+  function drawCube(x, y, size, color, dir) {
+    var h = size * 0.55, s = size / 2;
+    ctx.fillStyle = 'rgba(0,0,0,.25)';
+    ctx.beginPath(); ctx.ellipse(x, y + 2, s * 1.1, s * 0.45, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = darken(color, 0.65);
+    ctx.beginPath();
+    ctx.moveTo(x - s, y); ctx.lineTo(x - s, y - h); ctx.lineTo(x, y - h - s * 0.15); ctx.lineTo(x, y - s * 0.15);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = darken(color, 0.8);
+    ctx.beginPath();
+    ctx.moveTo(x + s, y); ctx.lineTo(x + s, y - h); ctx.lineTo(x, y - h - s * 0.15); ctx.lineTo(x, y - s * 0.15);
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = lighten(color, 0.15);
+    ctx.beginPath();
+    ctx.moveTo(x - s, y - h); ctx.lineTo(x, y - h - s * 0.15); ctx.lineTo(x + s, y - h); ctx.lineTo(x, y - h + s * 0.15);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,.35)'; ctx.lineWidth = 1; ctx.stroke();
+    if (dir !== undefined) {
+      ctx.strokeStyle = 'rgba(255,255,255,.9)'; ctx.lineWidth = 2.2; ctx.lineCap = 'round';
+      ctx.beginPath(); ctx.moveTo(x, y - h);
+      ctx.lineTo(x + Math.cos(dir) * (s * 0.55), y - h + Math.sin(dir) * (s * 0.35));
+      ctx.stroke();
+    }
+  }
+
+  // ========== PLAYER ==========
+  function Player(id, name, color, isBot) {
+    this.id = id;
+    this.name = name || 'Gracz';
+    this.color = color;
+    this.isBot = !!isBot;
+    this.alive = true;
+    this.x = 0; this.y = 0;
+    this.dir = 0; this.targetDir = 0;
+    this.trail = [];
+    this.onTerritory = true;
+    this.kills = 0;
+    this.territoryCells = 0;
+    this.isRemote = false;
+    this.peerId = null;
+    this.respawn();
+  }
+  Player.prototype.respawn = function () {
+    var tries = 100, sx, sy, free, g, r, dx, dy, nx, ny;
+    while (tries--) {
+      sx = rand(START_SZ + 50, MAP - START_SZ - 50);
+      sy = rand(START_SZ + 50, MAP - START_SZ - 50);
+      free = true; g = w2g(sx, sy); r = ((START_SZ / CELL) | 0) + 3;
+      for (dy = -r; dy <= r && free; dy++)
+        for (dx = -r; dx <= r && free; dx++) {
+          nx = g[0] + dx; ny = g[1] + dy;
+          if (nx >= 0 && ny >= 0 && nx < GRID && ny < GRID && grid[gIdx(nx, ny)] !== 0) free = false;
+        }
+      if (free) break;
+    }
+    this.x = sx; this.y = sy;
+    this.dir = rand(0, Math.PI * 2); this.targetDir = this.dir;
+    this.trail = []; this.onTerritory = true; this.alive = true;
+    this.claimStart();
+  };
+  Player.prototype.claimStart = function () {
+    var half = START_SZ;
+    var g0 = w2g(this.x - half, this.y - half), g1 = w2g(this.x + half, this.y + half);
+    var count = 0, gx, gy, idx;
+    for (gy = Math.max(0, g0[1]); gy <= Math.min(GRID - 1, g1[1]); gy++)
+      for (gx = Math.max(0, g0[0]); gx <= Math.min(GRID - 1, g1[0]); gx++) {
+        idx = gIdx(gx, gy);
+        if (grid[idx] === 0 || grid[idx] === this.id) { grid[idx] = this.id; count++; }
+      }
+    this.territoryCells = count;
+  };
+  Player.prototype.clearTerritory = function () {
+    var i;
+    for (i = 0; i < grid.length; i++) if (grid[i] === this.id) grid[i] = 0;
+    this.territoryCells = 0;
+  };
+  Player.prototype.die = function () {
+    var self = this;
+    if (!this.alive) return;
+    this.alive = false;
+    this.clearTerritory();
+    this.trail = [];
+    if (this.isRemote) return;
+    setTimeout(function () {
+      if (!running) return;
+      if (self === human || self.isBot) self.respawn();
+    }, this.isBot ? 900 + Math.random() * 1400 : 700);
+  };
+  Player.prototype.setDir = function (dx, dy) {
+    if (dx === 0 && dy === 0) return;
+    this.targetDir = Math.atan2(dy, dx);
+  };
+  Player.prototype.update = function (dt) {
+    if (!this.alive || this.isRemote) return;
+    var diff = this.targetDir - this.dir;
+    while (diff > Math.PI) diff -= Math.PI * 2;
+    while (diff < -Math.PI) diff += Math.PI * 2;
+    this.dir += clamp(diff, -10 * dt, 10 * dt);
+    this.x += Math.cos(this.dir) * SPEED;
+    this.y += Math.sin(this.dir) * SPEED;
+    if (this.x < 0 || this.y < 0 || this.x > MAP || this.y > MAP) { this.die(); return; }
+    var wasOn = this.onTerritory;
+    this.onTerritory = isOwn(this, this.x, this.y);
+    if (wasOn && !this.onTerritory) this.trail = [{ x: this.x, y: this.y }];
+    if (!this.onTerritory) {
+      var last = this.trail[this.trail.length - 1];
+      if (!last || dist(last.x, last.y, this.x, this.y) >= TRAIL_STEP) {
+        this.trail.push({ x: this.x, y: this.y });
+        if (this.trail.length > MAX_TRAIL) this.trail.shift();
+      }
+      if (this.trail.length > 14) {
+        var i;
+        for (i = 0; i < this.trail.length - 12; i++) {
+          if (dist2(this.x, this.y, this.trail[i].x, this.trail[i].y) < 64) { this.die(); return; }
+        }
+      }
+    }
+    if (!wasOn && this.onTerritory && this.trail.length > 5) this.closeLoop();
+    if (this.isBot) this.botThink();
+  };
+  Player.prototype.closeLoop = function () {
+    var poly = this.trail.slice();
+    poly.push({ x: this.x, y: this.y });
+    var minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity, i, p;
+    for (i = 0; i < poly.length; i++) {
+      p = poly[i];
+      if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y;
+    }
+    var g0 = w2g(minX - CELL, minY - CELL), g1 = w2g(maxX + CELL, maxY + CELL);
+    var gx, gy, cx, cy;
+    for (gy = Math.max(0, g0[1]); gy <= Math.min(GRID - 1, g1[1]); gy++)
+      for (gx = Math.max(0, g0[0]); gx <= Math.min(GRID - 1, g1[0]); gx++) {
+        cx = gx * CELL + CELL / 2; cy = gy * CELL + CELL / 2;
+        if (pointInPoly(cx, cy, poly)) grid[gIdx(gx, gy)] = this.id;
+      }
+    recount();
+    this.trail = [];
+  };
+  Player.prototype.botThink = function () {
+    var now = performance.now(), self = this;
+    if (!this._nt || now > this._nt) {
+      this._nt = now + 180 + Math.random() * 380;
+      if (this.onTerritory) {
+        var bestDx = Math.cos(this.dir), bestDy = Math.sin(this.dir), found = false, o, i, t;
+        for (var oi = 0; oi < players.length; oi++) {
+          o = players[oi];
+          if (o === this || !o.alive || o.onTerritory || o.trail.length < 6) continue;
+          for (i = 0; i < o.trail.length; i += 3) {
+            t = o.trail[i];
+            if (dist(this.x, this.y, t.x, t.y) < 200) { bestDx = t.x - this.x; bestDy = t.y - this.y; found = true; break; }
+          }
+          if (found) break;
+        }
+        if (!found) { var a = this.dir + rand(-1.4, 1.4); bestDx = Math.cos(a); bestDy = Math.sin(a); }
+        this.setDir(bestDx, bestDy);
+      } else {
+        var g = w2g(this.x, this.y), tx = this.x, ty = this.y, found2 = false, r, a, nx, ny;
+        for (r = 3; r < 45 && !found2; r += 3)
+          for (a = 0; a < 10; a++) {
+            var ang = (a / 10) * Math.PI * 2 + Math.random();
+            nx = (g[0] + Math.cos(ang) * r) | 0; ny = (g[1] + Math.sin(ang) * r) | 0;
+            if (nx >= 0 && ny >= 0 && nx < GRID && ny < GRID && grid[gIdx(nx, ny)] === this.id) {
+              tx = nx * CELL + CELL / 2; ty = ny * CELL + CELL / 2; found2 = true; break;
+            }
+          }
+        if (found2) {
+          var tox = tx - this.x, toy = ty - this.y, perp = Math.random() < 0.5 ? 1 : -1;
+          this.setDir(tox - toy * 0.5 * perp, toy + tox * 0.5 * perp);
+        } else this.setDir(rand(-1, 1), rand(-1, 1));
+        for (var oj = 0; oj < players.length; oj++) {
+          o = players[oj];
+          if (o === this || !o.alive || o.onTerritory) continue;
+          for (i = 0; i < o.trail.length; i += 5)
+            if (dist(this.x, this.y, o.trail[i].x, o.trail[i].y) < 100) {
+              this.setDir(o.trail[i].x - this.x, o.trail[i].y - this.y); break;
+            }
+        }
+      }
+    }
+    if (!this.onTerritory) {
+      var m = 70;
+      if (this.x < m) this.setDir(1, rand(-0.4, 0.4));
+      if (this.x > MAP - m) this.setDir(-1, rand(-0.4, 0.4));
+      if (this.y < m) this.setDir(rand(-0.4, 0.4), 1);
+      if (this.y > MAP - m) this.setDir(rand(-0.4, 0.4), -1);
+    }
+  };
+
+  function pointInPoly(x, y, poly) {
+    var inside = false, i, j, xi, yi, xj, yj;
+    for (i = 0, j = poly.length - 1; i < poly.length; j = i++) {
+      xi = poly[i].x; yi = poly[i].y; xj = poly[j].x; yj = poly[j].y;
+      if (((yi > y) !== (yj > y)) && (x < (xj - xi) * (y - yi) / (yj - yi) + xi)) inside = !inside;
+    }
+    return inside;
+  }
+  function recount() {
+    var counts = {}, i, id, p;
+    for (i = 0; i < players.length; i++) counts[players[i].id] = 0;
+    for (i = 0; i < grid.length; i++) {
+      id = grid[i];
+      if (id && counts[id] !== undefined) counts[id]++;
+    }
+    for (i = 0; i < players.length; i++) {
+      p = players[i];
+      p.territoryCells = counts[p.id] || 0;
+    }
+  }
+  function checkKills() {
+    var ai, vi, at, v, i;
+    for (ai = 0; ai < players.length; ai++) {
+      at = players[ai];
+      if (!at.alive) continue;
+      for (vi = 0; vi < players.length; vi++) {
+        v = players[vi];
+        if (!v.alive || v === at || v.onTerritory || !v.trail.length) continue;
+        for (i = 0; i < v.trail.length; i++) {
+          if (dist2(at.x, at.y, v.trail[i].x, v.trail[i].y) < (CUBE * CUBE * 0.7)) {
+            v.die();
+            at.kills++;
+            break;
+          }
+        }
+      }
+    }
+  }
